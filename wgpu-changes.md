@@ -88,3 +88,5 @@ See _sg_shader_desc_defaults() to fix one of these SG_NUM_SHADER_STAGES related 
 _sg_shader_common_init()
 
 _sg_wgpu_create_shader()
+
+Check _SOKOL_PRIVATE void _sg_wgpu_uniform_buffer_init(const sg_desc *desc) to verify BindGroupLayout visibility. Here it seems the only options are VS and FS, but CS should become an option in the future.

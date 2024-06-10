@@ -16059,6 +16059,8 @@ _SOKOL_PRIVATE WGPUShaderStage _sg_wgpu_shader_stage(sg_shader_stage stage) {
     return WGPUShaderStage_Vertex;
   case SG_SHADERSTAGE_FS:
     return WGPUShaderStage_Fragment;
+  case SG_SHADERSTAGE_CS:
+    return WGPUShaderStage_Compute;
   default:
     SOKOL_UNREACHABLE;
     return WGPUShaderStage_None;
@@ -17208,10 +17210,15 @@ _sg_wgpu_create_shader(_sg_shader_t *shd, const sg_shader_desc *desc) {
       }
     }
   } else {
-    printf("compute shader not supported yet\n");
     for (int stage_index = 1; stage_index < 3; stage_index++) {
       const sg_shader_stage_desc *stage_desc =
           (stage_index == SG_SHADERSTAGE_CS) ? &desc->cs : &desc->fs;
+
+      if (stage_index == SG_SHADERSTAGE_CS) {
+        printf("compute shader not supported yet\n");
+      } else if (stage_index == SG_SHADERSTAGE_FS) {
+        printf("fragment shader should be supported\n");
+      }
 
       _sg_shader_stage_t *cmn_stage = &shd->cmn.stage[stage_index];
       _sg_wgpu_shader_stage_t *wgpu_stage = &shd->wgpu.stage[stage_index];
@@ -20123,7 +20130,8 @@ _SOKOL_PRIVATE bool _sg_validate_apply_uniforms(sg_shader_stage stage_index,
     return true;
   }
   SOKOL_ASSERT((stage_index == SG_SHADERSTAGE_VS) ||
-               (stage_index == SG_SHADERSTAGE_FS));
+               (stage_index == SG_SHADERSTAGE_FS) ||
+               (stage_index == SG_SHADERSTAGE_CS));
   SOKOL_ASSERT((ub_index >= 0) && (ub_index < SG_MAX_SHADERSTAGE_UBS));
   _sg_validate_begin();
   _SG_VALIDATE(_sg.cur_pipeline.id != SG_INVALID_ID, VALIDATE_AUB_NO_PIPELINE);
