@@ -1,3 +1,4 @@
+#include <stdio.h>
 #if defined(SOKOL_IMPL) && !defined(SOKOL_GFX_IMPL)
 #define SOKOL_GFX_IMPL
 #endif
@@ -3152,6 +3153,7 @@ typedef struct sg_shader_desc {
   sg_shader_stage_desc vs;
   sg_shader_stage_desc fs;
   sg_shader_stage_desc cs; // compute shader stage, new field
+  bool is_compute;
   const char *label;
   uint32_t _end_canary;
 } sg_shader_desc;
@@ -4864,6 +4866,7 @@ typedef struct sg_wgpu_sampler_info {
 typedef struct sg_wgpu_shader_info {
   const void *vs_mod; // WGPUShaderModule
   const void *fs_mod; // WGPUShaderModule
+  const void *cs_mod; // WGPUShaderModule
   const void *bgl;    // WGPUBindGroupLayout;
 } sg_wgpu_shader_info;
 
@@ -5834,9 +5837,17 @@ typedef struct {
 
 _SOKOL_PRIVATE void _sg_shader_common_init(_sg_shader_common_t *cmn,
                                            const sg_shader_desc *desc) {
-  for (int stage_index = 0; stage_index < SG_NUM_SHADER_STAGES; stage_index++) {
-    const sg_shader_stage_desc *stage_desc =
-        (stage_index == SG_SHADERSTAGE_VS) ? &desc->vs : &desc->fs;
+  for (int stage_index = 0; stage_index < 3; stage_index++) {
+    // const sg_shader_stage_desc *stage_desc =
+    //     (stage_index == SG_SHADERSTAGE_VS) ? &desc->vs : &desc->fs;
+    const sg_shader_stage_desc *stage_desc = 0;
+    if (stage_index == SG_SHADERSTAGE_VS) {
+      stage_desc = &desc->vs;
+    } else if (stage_index == SG_SHADERSTAGE_FS) {
+      stage_desc = &desc->fs;
+    } else if (stage_index == SG_SHADERSTAGE_CS) {
+      stage_desc = &desc->cs;
+    }
     _sg_shader_stage_t *stage = &cmn->stage[stage_index];
     SOKOL_ASSERT(stage->num_uniform_blocks == 0);
     for (int ub_index = 0; ub_index < SG_MAX_SHADERSTAGE_UBS; ub_index++) {
@@ -6514,7 +6525,7 @@ typedef struct {
   _sg_slot_t slot;
   _sg_shader_common_t cmn;
   struct {
-    _sg_wgpu_shader_stage_t stage[SG_NUM_SHADER_STAGES];
+    _sg_wgpu_shader_stage_t stage[3];
     WGPUBindGroupLayout bind_group_layout;
   } wgpu;
 } _sg_wgpu_shader_t;
@@ -16483,43 +16494,46 @@ _sg_wgpu_create_bindgroup(_sg_bindings_t *bnd) {
   int bge_index = 0;
   if (bnd->pip->is_compute) {
     for (int i = 0; i < bnd->num_cs_sbufs; i++) {
-        WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
-        wgpu_entry->binding = _sg_wgpu_storagebuffer_binding(SG_SHADERSTAGE_CS, i);
-        wgpu_entry->buffer = bnd->cs_sbufs[i]->wgpu.buf;
-        wgpu_entry->size = (uint64_t)bnd->cs_sbufs[i]->cmn.size;
+      WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
+      wgpu_entry->binding =
+          _sg_wgpu_storagebuffer_binding(SG_SHADERSTAGE_CS, i);
+      wgpu_entry->buffer = bnd->cs_sbufs[i]->wgpu.buf;
+      wgpu_entry->size = (uint64_t)bnd->cs_sbufs[i]->cmn.size;
     }
   } else {
     for (int i = 0; i < bnd->num_vs_imgs; i++) {
-        WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
-        wgpu_entry->binding = _sg_wgpu_image_binding(SG_SHADERSTAGE_VS, i);
-        wgpu_entry->textureView = bnd->vs_imgs[i]->wgpu.view;
+      WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
+      wgpu_entry->binding = _sg_wgpu_image_binding(SG_SHADERSTAGE_VS, i);
+      wgpu_entry->textureView = bnd->vs_imgs[i]->wgpu.view;
     }
     for (int i = 0; i < bnd->num_vs_smps; i++) {
-        WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
-        wgpu_entry->binding = _sg_wgpu_sampler_binding(SG_SHADERSTAGE_VS, i);
-        wgpu_entry->sampler = bnd->vs_smps[i]->wgpu.smp;
+      WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
+      wgpu_entry->binding = _sg_wgpu_sampler_binding(SG_SHADERSTAGE_VS, i);
+      wgpu_entry->sampler = bnd->vs_smps[i]->wgpu.smp;
     }
     for (int i = 0; i < bnd->num_vs_sbufs; i++) {
-        WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
-        wgpu_entry->binding = _sg_wgpu_storagebuffer_binding(SG_SHADERSTAGE_VS, i);
-        wgpu_entry->buffer = bnd->vs_sbufs[i]->wgpu.buf;
-        wgpu_entry->size = (uint64_t)bnd->vs_sbufs[i]->cmn.size;
+      WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
+      wgpu_entry->binding =
+          _sg_wgpu_storagebuffer_binding(SG_SHADERSTAGE_VS, i);
+      wgpu_entry->buffer = bnd->vs_sbufs[i]->wgpu.buf;
+      wgpu_entry->size = (uint64_t)bnd->vs_sbufs[i]->cmn.size;
     }
     for (int i = 0; i < bnd->num_fs_imgs; i++) {
-        WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
-        wgpu_entry->binding = _sg_wgpu_image_binding(SG_SHADERSTAGE_FS, i);
-        wgpu_entry->textureView = bnd->fs_imgs[i]->wgpu.view;
+      WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
+      wgpu_entry->binding = _sg_wgpu_image_binding(SG_SHADERSTAGE_FS, i);
+      wgpu_entry->textureView = bnd->fs_imgs[i]->wgpu.view;
     }
     for (int i = 0; i < bnd->num_fs_smps; i++) {
-        WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
-        wgpu_entry->binding = _sg_wgpu_sampler_binding(SG_SHADERSTAGE_FS, i);
-        wgpu_entry->sampler = bnd->fs_smps[i]->wgpu.smp;
+      WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
+      wgpu_entry->binding = _sg_wgpu_sampler_binding(SG_SHADERSTAGE_FS, i);
+      wgpu_entry->sampler = bnd->fs_smps[i]->wgpu.smp;
     }
     for (int i = 0; i < bnd->num_fs_sbufs; i++) {
-        WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
-        wgpu_entry->binding = _sg_wgpu_storagebuffer_binding(SG_SHADERSTAGE_FS, i);
-        wgpu_entry->buffer = bnd->fs_sbufs[i]->wgpu.buf;
-        wgpu_entry->size = (uint64_t)bnd->fs_sbufs[i]->cmn.size;
+      WGPUBindGroupEntry *wgpu_entry = &wgpu_entries[bge_index++];
+      wgpu_entry->binding =
+          _sg_wgpu_storagebuffer_binding(SG_SHADERSTAGE_FS, i);
+      wgpu_entry->buffer = bnd->fs_sbufs[i]->wgpu.buf;
+      wgpu_entry->size = (uint64_t)bnd->fs_sbufs[i]->cmn.size;
     }
   }
   WGPUBindGroupDescriptor bg_desc;
@@ -17105,85 +17119,182 @@ _sg_wgpu_create_shader(_sg_shader_t *shd, const sg_shader_desc *desc) {
   WGPUBindGroupLayoutEntry wgpu_bgl_entries[_SG_WGPU_MAX_BINDGROUP_ENTRIES];
   _sg_clear(wgpu_bgl_entries, sizeof(wgpu_bgl_entries));
   int bgl_index = 0;
-  for (int stage_index = 0; stage_index < SG_NUM_SHADER_STAGES; stage_index++) {
-    const sg_shader_stage_desc *stage_desc =
-        (stage_index == SG_SHADERSTAGE_VS) ? &desc->vs : &desc->fs;
+  if (!desc->is_compute) {
+    for (int stage_index = 0; stage_index < SG_NUM_SHADER_STAGES;
+         stage_index++) {
+      const sg_shader_stage_desc *stage_desc =
+          (stage_index == SG_SHADERSTAGE_VS) ? &desc->vs : &desc->fs;
 
-    _sg_shader_stage_t *cmn_stage = &shd->cmn.stage[stage_index];
-    _sg_wgpu_shader_stage_t *wgpu_stage = &shd->wgpu.stage[stage_index];
-    _sg_strcpy(&wgpu_stage->entry, stage_desc->entry);
+      _sg_shader_stage_t *cmn_stage = &shd->cmn.stage[stage_index];
+      _sg_wgpu_shader_stage_t *wgpu_stage = &shd->wgpu.stage[stage_index];
+      _sg_strcpy(&wgpu_stage->entry, stage_desc->entry);
 
-    WGPUShaderModuleWGSLDescriptor wgpu_shdmod_wgsl_desc;
-    _sg_clear(&wgpu_shdmod_wgsl_desc, sizeof(wgpu_shdmod_wgsl_desc));
-    wgpu_shdmod_wgsl_desc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
-    wgpu_shdmod_wgsl_desc.code = stage_desc->source;
+      WGPUShaderModuleWGSLDescriptor wgpu_shdmod_wgsl_desc;
+      _sg_clear(&wgpu_shdmod_wgsl_desc, sizeof(wgpu_shdmod_wgsl_desc));
+      wgpu_shdmod_wgsl_desc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
+      wgpu_shdmod_wgsl_desc.code = stage_desc->source;
 
-    WGPUShaderModuleDescriptor wgpu_shdmod_desc;
-    _sg_clear(&wgpu_shdmod_desc, sizeof(wgpu_shdmod_desc));
-    wgpu_shdmod_desc.nextInChain = &wgpu_shdmod_wgsl_desc.chain;
-    wgpu_shdmod_desc.label = desc->label;
+      WGPUShaderModuleDescriptor wgpu_shdmod_desc;
+      _sg_clear(&wgpu_shdmod_desc, sizeof(wgpu_shdmod_desc));
+      wgpu_shdmod_desc.nextInChain = &wgpu_shdmod_wgsl_desc.chain;
+      wgpu_shdmod_desc.label = desc->label;
 
-    wgpu_stage->module =
-        wgpuDeviceCreateShaderModule(_sg.wgpu.dev, &wgpu_shdmod_desc);
-    if (0 == wgpu_stage->module) {
-      _SG_ERROR(WGPU_CREATE_SHADER_MODULE_FAILED);
-      return SG_RESOURCESTATE_FAILED;
-    }
+      wgpu_stage->module =
+          wgpuDeviceCreateShaderModule(_sg.wgpu.dev, &wgpu_shdmod_desc);
+      if (0 == wgpu_stage->module) {
+        _SG_ERROR(WGPU_CREATE_SHADER_MODULE_FAILED);
+        return SG_RESOURCESTATE_FAILED;
+      }
 
-    const int num_images = cmn_stage->num_images;
-    if (num_images >
-        (int)_sg.wgpu.limits.limits.maxSampledTexturesPerShaderStage) {
-      _SG_ERROR(WGPU_SHADER_TOO_MANY_IMAGES);
-      return SG_RESOURCESTATE_FAILED;
+      const int num_images = cmn_stage->num_images;
+      if (num_images >
+          (int)_sg.wgpu.limits.limits.maxSampledTexturesPerShaderStage) {
+        _SG_ERROR(WGPU_SHADER_TOO_MANY_IMAGES);
+        return SG_RESOURCESTATE_FAILED;
+      }
+      const int num_samplers = cmn_stage->num_samplers;
+      if (num_samplers >
+          (int)_sg.wgpu.limits.limits.maxSamplersPerShaderStage) {
+        _SG_ERROR(WGPU_SHADER_TOO_MANY_SAMPLERS);
+        return SG_RESOURCESTATE_FAILED;
+      }
+      const int num_sbufs = cmn_stage->num_storage_buffers;
+      if (num_sbufs >
+          (int)_sg.wgpu.limits.limits.maxStorageBuffersPerShaderStage) {
+        _SG_ERROR(WGPU_SHADER_TOO_MANY_STORAGEBUFFERS);
+        return SG_RESOURCESTATE_FAILED;
+      }
+      for (int img_index = 0; img_index < num_images; img_index++) {
+        SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
+        WGPUBindGroupLayoutEntry *wgpu_bgl_entry =
+            &wgpu_bgl_entries[bgl_index++];
+        const sg_shader_image_desc *img_desc = &stage_desc->images[img_index];
+        wgpu_bgl_entry->binding =
+            _sg_wgpu_image_binding((sg_shader_stage)stage_index, img_index);
+        wgpu_bgl_entry->visibility =
+            _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
+        wgpu_bgl_entry->texture.viewDimension =
+            _sg_wgpu_texture_view_dimension(img_desc->image_type);
+        wgpu_bgl_entry->texture.sampleType =
+            _sg_wgpu_texture_sample_type(img_desc->sample_type);
+        wgpu_bgl_entry->texture.multisampled = img_desc->multisampled;
+      }
+      for (int smp_index = 0; smp_index < num_samplers; smp_index++) {
+        SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
+        WGPUBindGroupLayoutEntry *wgpu_bgl_entry =
+            &wgpu_bgl_entries[bgl_index++];
+        const sg_shader_sampler_desc *smp_desc =
+            &stage_desc->samplers[smp_index];
+        wgpu_bgl_entry->binding =
+            _sg_wgpu_sampler_binding((sg_shader_stage)stage_index, smp_index);
+        wgpu_bgl_entry->visibility =
+            _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
+        wgpu_bgl_entry->sampler.type =
+            _sg_wgpu_sampler_binding_type(smp_desc->sampler_type);
+      }
+      for (int sbuf_index = 0; sbuf_index < num_sbufs; sbuf_index++) {
+        SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
+        WGPUBindGroupLayoutEntry *wgpu_bgl_entry =
+            &wgpu_bgl_entries[bgl_index++];
+        const sg_shader_storage_buffer_desc *sbuf_desc =
+            &stage_desc->storage_buffers[sbuf_index];
+        wgpu_bgl_entry->binding = _sg_wgpu_storagebuffer_binding(
+            (sg_shader_stage)stage_index, sbuf_index);
+        wgpu_bgl_entry->visibility =
+            _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
+        wgpu_bgl_entry->buffer.type =
+            sbuf_desc->readonly ? WGPUBufferBindingType_ReadOnlyStorage
+                                : WGPUBufferBindingType_Storage;
+      }
     }
-    const int num_samplers = cmn_stage->num_samplers;
-    if (num_samplers > (int)_sg.wgpu.limits.limits.maxSamplersPerShaderStage) {
-      _SG_ERROR(WGPU_SHADER_TOO_MANY_SAMPLERS);
-      return SG_RESOURCESTATE_FAILED;
-    }
-    const int num_sbufs = cmn_stage->num_storage_buffers;
-    if (num_sbufs >
-        (int)_sg.wgpu.limits.limits.maxStorageBuffersPerShaderStage) {
-      _SG_ERROR(WGPU_SHADER_TOO_MANY_STORAGEBUFFERS);
-      return SG_RESOURCESTATE_FAILED;
-    }
-    for (int img_index = 0; img_index < num_images; img_index++) {
-      SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
-      WGPUBindGroupLayoutEntry *wgpu_bgl_entry = &wgpu_bgl_entries[bgl_index++];
-      const sg_shader_image_desc *img_desc = &stage_desc->images[img_index];
-      wgpu_bgl_entry->binding =
-          _sg_wgpu_image_binding((sg_shader_stage)stage_index, img_index);
-      wgpu_bgl_entry->visibility =
-          _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
-      wgpu_bgl_entry->texture.viewDimension =
-          _sg_wgpu_texture_view_dimension(img_desc->image_type);
-      wgpu_bgl_entry->texture.sampleType =
-          _sg_wgpu_texture_sample_type(img_desc->sample_type);
-      wgpu_bgl_entry->texture.multisampled = img_desc->multisampled;
-    }
-    for (int smp_index = 0; smp_index < num_samplers; smp_index++) {
-      SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
-      WGPUBindGroupLayoutEntry *wgpu_bgl_entry = &wgpu_bgl_entries[bgl_index++];
-      const sg_shader_sampler_desc *smp_desc = &stage_desc->samplers[smp_index];
-      wgpu_bgl_entry->binding =
-          _sg_wgpu_sampler_binding((sg_shader_stage)stage_index, smp_index);
-      wgpu_bgl_entry->visibility =
-          _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
-      wgpu_bgl_entry->sampler.type =
-          _sg_wgpu_sampler_binding_type(smp_desc->sampler_type);
-    }
-    for (int sbuf_index = 0; sbuf_index < num_sbufs; sbuf_index++) {
-      SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
-      WGPUBindGroupLayoutEntry *wgpu_bgl_entry = &wgpu_bgl_entries[bgl_index++];
-      const sg_shader_storage_buffer_desc *sbuf_desc =
-          &stage_desc->storage_buffers[sbuf_index];
-      wgpu_bgl_entry->binding = _sg_wgpu_storagebuffer_binding(
-          (sg_shader_stage)stage_index, sbuf_index);
-      wgpu_bgl_entry->visibility =
-          _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
-      wgpu_bgl_entry->buffer.type = sbuf_desc->readonly
-                                        ? WGPUBufferBindingType_ReadOnlyStorage
-                                        : WGPUBufferBindingType_Storage;
+  } else {
+    printf("compute shader not supported yet\n");
+    for (int stage_index = 1; stage_index < 3; stage_index++) {
+      const sg_shader_stage_desc *stage_desc =
+          (stage_index == SG_SHADERSTAGE_CS) ? &desc->cs : &desc->fs;
+
+      _sg_shader_stage_t *cmn_stage = &shd->cmn.stage[stage_index];
+      _sg_wgpu_shader_stage_t *wgpu_stage = &shd->wgpu.stage[stage_index];
+      _sg_strcpy(&wgpu_stage->entry, stage_desc->entry);
+
+      WGPUShaderModuleWGSLDescriptor wgpu_shdmod_wgsl_desc;
+      _sg_clear(&wgpu_shdmod_wgsl_desc, sizeof(wgpu_shdmod_wgsl_desc));
+      wgpu_shdmod_wgsl_desc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
+      wgpu_shdmod_wgsl_desc.code = stage_desc->source;
+      printf("source: %s\n", wgpu_shdmod_wgsl_desc.code);
+
+      WGPUShaderModuleDescriptor wgpu_shdmod_desc;
+      _sg_clear(&wgpu_shdmod_desc, sizeof(wgpu_shdmod_desc));
+      wgpu_shdmod_desc.nextInChain = &wgpu_shdmod_wgsl_desc.chain;
+      wgpu_shdmod_desc.label = desc->label;
+
+      wgpu_stage->module =
+          wgpuDeviceCreateShaderModule(_sg.wgpu.dev, &wgpu_shdmod_desc);
+      if (0 == wgpu_stage->module) {
+        _SG_ERROR(WGPU_CREATE_SHADER_MODULE_FAILED);
+        return SG_RESOURCESTATE_FAILED;
+      }
+
+      const int num_images = cmn_stage->num_images;
+      if (num_images >
+          (int)_sg.wgpu.limits.limits.maxSampledTexturesPerShaderStage) {
+        _SG_ERROR(WGPU_SHADER_TOO_MANY_IMAGES);
+        return SG_RESOURCESTATE_FAILED;
+      }
+      const int num_samplers = cmn_stage->num_samplers;
+      if (num_samplers >
+          (int)_sg.wgpu.limits.limits.maxSamplersPerShaderStage) {
+        _SG_ERROR(WGPU_SHADER_TOO_MANY_SAMPLERS);
+        return SG_RESOURCESTATE_FAILED;
+      }
+      const int num_sbufs = cmn_stage->num_storage_buffers;
+      if (num_sbufs >
+          (int)_sg.wgpu.limits.limits.maxStorageBuffersPerShaderStage) {
+        _SG_ERROR(WGPU_SHADER_TOO_MANY_STORAGEBUFFERS);
+        return SG_RESOURCESTATE_FAILED;
+      }
+      for (int img_index = 0; img_index < num_images; img_index++) {
+        SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
+        WGPUBindGroupLayoutEntry *wgpu_bgl_entry =
+            &wgpu_bgl_entries[bgl_index++];
+        const sg_shader_image_desc *img_desc = &stage_desc->images[img_index];
+        wgpu_bgl_entry->binding =
+            _sg_wgpu_image_binding((sg_shader_stage)stage_index, img_index);
+        wgpu_bgl_entry->visibility =
+            _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
+        wgpu_bgl_entry->texture.viewDimension =
+            _sg_wgpu_texture_view_dimension(img_desc->image_type);
+        wgpu_bgl_entry->texture.sampleType =
+            _sg_wgpu_texture_sample_type(img_desc->sample_type);
+        wgpu_bgl_entry->texture.multisampled = img_desc->multisampled;
+      }
+      for (int smp_index = 0; smp_index < num_samplers; smp_index++) {
+        SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
+        WGPUBindGroupLayoutEntry *wgpu_bgl_entry =
+            &wgpu_bgl_entries[bgl_index++];
+        const sg_shader_sampler_desc *smp_desc =
+            &stage_desc->samplers[smp_index];
+        wgpu_bgl_entry->binding =
+            _sg_wgpu_sampler_binding((sg_shader_stage)stage_index, smp_index);
+        wgpu_bgl_entry->visibility =
+            _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
+        wgpu_bgl_entry->sampler.type =
+            _sg_wgpu_sampler_binding_type(smp_desc->sampler_type);
+      }
+      for (int sbuf_index = 0; sbuf_index < num_sbufs; sbuf_index++) {
+        SOKOL_ASSERT(bgl_index < _SG_WGPU_MAX_BINDGROUP_ENTRIES);
+        WGPUBindGroupLayoutEntry *wgpu_bgl_entry =
+            &wgpu_bgl_entries[bgl_index++];
+        const sg_shader_storage_buffer_desc *sbuf_desc =
+            &stage_desc->storage_buffers[sbuf_index];
+        wgpu_bgl_entry->binding = _sg_wgpu_storagebuffer_binding(
+            (sg_shader_stage)stage_index, sbuf_index);
+        wgpu_bgl_entry->visibility =
+            _sg_wgpu_shader_stage((sg_shader_stage)stage_index);
+        wgpu_bgl_entry->buffer.type =
+            sbuf_desc->readonly ? WGPUBufferBindingType_ReadOnlyStorage
+                                : WGPUBufferBindingType_Storage;
+      }
     }
   }
 
@@ -17245,13 +17356,17 @@ _SOKOL_PRIVATE sg_resource_state _sg_wgpu_create_pipeline(
     // Create compute pipeline
     WGPUComputePipelineDescriptor cp_desc = {
         .layout = wgpu_pip_layout,
-        .compute =
-            {
-                .module = shd->wgpu.stage[SG_SHADERSTAGE_CS].module,
-                .entryPoint = shd->wgpu.stage[SG_SHADERSTAGE_CS].entry.buf,
-            },
+        .compute = {.module = shd->wgpu.stage[SG_SHADERSTAGE_CS].module,
+                    .entryPoint = "main"},
     };
+    printf("%s\n", shd->wgpu.stage[SG_SHADERSTAGE_CS].entry.buf);
     pip->wgpu.compute = wgpuDeviceCreateComputePipeline(_sg.wgpu.dev, &cp_desc);
+    if (0 == pip->wgpu.compute) {
+      _SG_ERROR(WGPU_CREATE_COMPUTE_PIPELINE_FAILED);
+      wgpuPipelineLayoutRelease(wgpu_pip_layout);
+      return SG_RESOURCESTATE_FAILED;
+    }
+    pip->is_compute = true;
   } else {
     // Create render pipeline
     WGPUVertexBufferLayout wgpu_vb_layouts[SG_MAX_VERTEX_BUFFERS];
@@ -20151,70 +20266,117 @@ _sg_sampler_desc_defaults(const sg_sampler_desc *desc) {
   return def;
 }
 
-_SOKOL_PRIVATE sg_shader_desc _sg_shader_desc_defaults(const sg_shader_desc* desc) {
-    sg_shader_desc def = *desc;
+_SOKOL_PRIVATE sg_shader_desc
+_sg_shader_desc_defaults(const sg_shader_desc *desc) {
+  sg_shader_desc def = *desc;
 #if defined(SOKOL_METAL)
-    def.vs.entry = _sg_def(def.vs.entry, "_main");
-    def.fs.entry = _sg_def(def.fs.entry, "_main");
-    def.cs.entry = _sg_def(def.cs.entry, "_main");
+  def.vs.entry = _sg_def(def.vs.entry, "_main");
+  def.fs.entry = _sg_def(def.fs.entry, "_main");
+  def.cs.entry = _sg_def(def.cs.entry, "_main");
 #else
-    def.vs.entry = _sg_def(def.vs.entry, "main");
-    def.fs.entry = _sg_def(def.fs.entry, "main");
-    def.cs.entry = _sg_def(def.cs.entry, "main");
+  def.vs.entry = _sg_def(def.vs.entry, "main");
+  def.fs.entry = _sg_def(def.fs.entry, "main");
+  def.cs.entry = _sg_def(def.cs.entry, "main");
 #endif
 #if defined(SOKOL_D3D11)
-    if (def.vs.source) {
-        def.vs.d3d11_target = _sg_def(def.vs.d3d11_target, "vs_4_0");
-    }
-    if (def.fs.source) {
-        def.fs.d3d11_target = _sg_def(def.fs.d3d11_target, "ps_4_0");
-    }
-    if (def.cs.source) {
-        def.cs.d3d11_target = _sg_def(def.cs.d3d11_target, "cs_4_0");
-    }
+  if (def.vs.source) {
+    def.vs.d3d11_target = _sg_def(def.vs.d3d11_target, "vs_4_0");
+  }
+  if (def.fs.source) {
+    def.fs.d3d11_target = _sg_def(def.fs.d3d11_target, "ps_4_0");
+  }
+  if (def.cs.source) {
+    def.cs.d3d11_target = _sg_def(def.cs.d3d11_target, "cs_4_0");
+  }
 #endif
-    for (int stage_index = 0; stage_index < SG_NUM_SHADER_STAGES; stage_index++) {
-        sg_shader_stage_desc* stage_desc = NULL;
-        if (stage_index == SG_SHADERSTAGE_VS) {
-            stage_desc = &def.vs;
-        } else if (stage_index == SG_SHADERSTAGE_FS) {
-            stage_desc = &def.fs;
-        } else if (stage_index == SG_SHADERSTAGE_CS) {
-            stage_desc = &def.cs;
+  if (!desc->is_compute) {
+    for (int stage_index = 0; stage_index < SG_NUM_SHADER_STAGES;
+         stage_index++) {
+      sg_shader_stage_desc *stage_desc =
+          stage_index == SG_SHADERSTAGE_VS ? &def.vs : &def.fs;
+      if (stage_desc) {
+        for (int ub_index = 0; ub_index < SG_MAX_SHADERSTAGE_UBS; ub_index++) {
+          sg_shader_uniform_block_desc *ub_desc =
+              &stage_desc->uniform_blocks[ub_index];
+          if (0 == ub_desc->size) {
+            break;
+          }
+          ub_desc->layout = _sg_def(ub_desc->layout, SG_UNIFORMLAYOUT_NATIVE);
+          for (int u_index = 0; u_index < SG_MAX_UB_MEMBERS; u_index++) {
+            sg_shader_uniform_desc *u_desc = &ub_desc->uniforms[u_index];
+            if (u_desc->type == SG_UNIFORMTYPE_INVALID) {
+              break;
+            }
+            u_desc->array_count = _sg_def(u_desc->array_count, 1);
+          }
         }
-        if (stage_desc) {
-            for (int ub_index = 0; ub_index < SG_MAX_SHADERSTAGE_UBS; ub_index++) {
-                sg_shader_uniform_block_desc* ub_desc = &stage_desc->uniform_blocks[ub_index];
-                if (0 == ub_desc->size) {
-                    break;
-                }
-                ub_desc->layout = _sg_def(ub_desc->layout, SG_UNIFORMLAYOUT_NATIVE);
-                for (int u_index = 0; u_index < SG_MAX_UB_MEMBERS; u_index++) {
-                    sg_shader_uniform_desc* u_desc = &ub_desc->uniforms[u_index];
-                    if (u_desc->type == SG_UNIFORMTYPE_INVALID) {
-                        break;
-                    }
-                    u_desc->array_count = _sg_def(u_desc->array_count, 1);
-                }
-            }
-            for (int img_index = 0; img_index < SG_MAX_SHADERSTAGE_IMAGES; img_index++) {
-                sg_shader_image_desc* img_desc = &stage_desc->images[img_index];
-                if (!img_desc->used) {
-                    break;
-                }
-                img_desc->image_type = _sg_def(img_desc->image_type, SG_IMAGETYPE_2D);
-                img_desc->sample_type = _sg_def(img_desc->sample_type, SG_IMAGESAMPLETYPE_FLOAT);
-            }
-            for (int smp_index = 0; smp_index < SG_MAX_SHADERSTAGE_SAMPLERS; smp_index++) {
-                sg_shader_sampler_desc* smp_desc = &stage_desc->samplers[smp_index];
-                if (!smp_desc->used) {
-                    break;
-                }
-                smp_desc->sampler_type = _sg_def(smp_desc->sampler_type, SG_SAMPLERTYPE_FILTERING);
-            }
+        for (int img_index = 0; img_index < SG_MAX_SHADERSTAGE_IMAGES;
+             img_index++) {
+          sg_shader_image_desc *img_desc = &stage_desc->images[img_index];
+          if (!img_desc->used) {
+            break;
+          }
+          img_desc->image_type = _sg_def(img_desc->image_type, SG_IMAGETYPE_2D);
+          img_desc->sample_type =
+              _sg_def(img_desc->sample_type, SG_IMAGESAMPLETYPE_FLOAT);
         }
+        for (int smp_index = 0; smp_index < SG_MAX_SHADERSTAGE_SAMPLERS;
+             smp_index++) {
+          sg_shader_sampler_desc *smp_desc = &stage_desc->samplers[smp_index];
+          if (!smp_desc->used) {
+            break;
+          }
+          smp_desc->sampler_type =
+              _sg_def(smp_desc->sampler_type, SG_SAMPLERTYPE_FILTERING);
+        }
+      }
     }
-    return def;
+  } else {
+    printf("is_compute\n");
+
+    for (int stage_index = 1; stage_index < 3; stage_index++) {
+      sg_shader_stage_desc *stage_desc =
+          stage_index == SG_SHADERSTAGE_CS ? &def.cs : &def.fs;
+      if (stage_desc) {
+        for (int ub_index = 0; ub_index < SG_MAX_SHADERSTAGE_UBS; ub_index++) {
+          sg_shader_uniform_block_desc *ub_desc =
+              &stage_desc->uniform_blocks[ub_index];
+          if (0 == ub_desc->size) {
+            break;
+          }
+          ub_desc->layout = _sg_def(ub_desc->layout, SG_UNIFORMLAYOUT_NATIVE);
+          for (int u_index = 0; u_index < SG_MAX_UB_MEMBERS; u_index++) {
+            sg_shader_uniform_desc *u_desc = &ub_desc->uniforms[u_index];
+            if (u_desc->type == SG_UNIFORMTYPE_INVALID) {
+              break;
+            }
+            u_desc->array_count = _sg_def(u_desc->array_count, 1);
+          }
+        }
+        for (int img_index = 0; img_index < SG_MAX_SHADERSTAGE_IMAGES;
+             img_index++) {
+          sg_shader_image_desc *img_desc = &stage_desc->images[img_index];
+          if (!img_desc->used) {
+            break;
+          }
+          img_desc->image_type = _sg_def(img_desc->image_type, SG_IMAGETYPE_2D);
+          img_desc->sample_type =
+              _sg_def(img_desc->sample_type, SG_IMAGESAMPLETYPE_FLOAT);
+        }
+        for (int smp_index = 0; smp_index < SG_MAX_SHADERSTAGE_SAMPLERS;
+             smp_index++) {
+          sg_shader_sampler_desc *smp_desc = &stage_desc->samplers[smp_index];
+          if (!smp_desc->used) {
+            break;
+          }
+          smp_desc->sampler_type =
+              _sg_def(smp_desc->sampler_type, SG_SAMPLERTYPE_FILTERING);
+        }
+      }
+    }
+  }
+
+  return def;
 }
 
 _SOKOL_PRIVATE sg_pipeline_desc
@@ -22582,6 +22744,7 @@ SOKOL_API_IMPL sg_wgpu_shader_info sg_wgpu_query_shader_info(sg_shader shd_id) {
   if (shd) {
     res.vs_mod = (const void *)shd->wgpu.stage[SG_SHADERSTAGE_VS].module;
     res.fs_mod = (const void *)shd->wgpu.stage[SG_SHADERSTAGE_FS].module;
+    res.cs_mod = (const void *)shd->wgpu.stage[SG_SHADERSTAGE_CS].module;
     res.bgl = (const void *)shd->wgpu.bind_group_layout;
   }
 #else

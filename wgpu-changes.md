@@ -84,3 +84,7 @@ The problem here is that the BindGroupLayout is determining that any Layout need
 If we keep SG_NUM_SHADER_STAGES = 2, then the problem is solved, but then compute shaders won't actually work yet due to some logic reusing SG_NUM_SHADER_STAGES for other purposes that don't validate the # of dynamic UBs.
 
 See _sg_shader_desc_defaults() to fix one of these SG_NUM_SHADER_STAGES related problems. The code is iterating from [0, SG_NUM_SHADER_STAGES) and assigns the defaults for the VS and FS stages. Normally this works because the macro = 2. When introducing a 3rd possibility, the logic changes a bit. I am considering just using the VS memory allocations to store all the data for the CS and just run the ComputePipeline and have it interact with the Pipeline that thinks it has a vertex shader (but is actually a compute shader).
+
+_sg_shader_common_init()
+
+_sg_wgpu_create_shader()
